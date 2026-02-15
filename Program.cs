@@ -44,12 +44,6 @@ internal static class Program
 
         workbookPath = options.TryGetValue("--file", out var file) ? file : DefaultWorkbook;
 
-        if (!File.Exists(workbookPath))
-        {
-            AnsiConsole.MarkupLine($"[red]Workbook not found:[/] {Markup.Escape(workbookPath)}");
-            return 1;
-        }
-
         try
         {
             if (command.StartsWith("--", StringComparison.Ordinal))
@@ -130,6 +124,12 @@ internal static class Program
 
     private static int RunView(string workbookPath, Dictionary<string, string> options)
     {
+        if (!File.Exists(workbookPath))
+        {
+            AnsiConsole.MarkupLine($"[red]Workbook not found:[/] {Markup.Escape(workbookPath)}");
+            return 1;
+        }
+
         using var workbook = new XLWorkbook(workbookPath);
         var sheet = SelectSheet(workbook, options);
         if (sheet == null)
@@ -164,7 +164,18 @@ internal static class Program
 
     private static int RunAdd(string workbookPath, Dictionary<string, string> options)
     {
+        if (!File.Exists(workbookPath))
+        {
+            var state = InitializeWorkbookFromScratch(workbookPath, options, null);
+            return state == null ? 1 : 0;
+        }
+
         using var workbook = new XLWorkbook(workbookPath);
+        if (!HasPortfolioSheets(workbook))
+        {
+            var state = InitializeWorkbookFromScratch(workbookPath, options, workbook);
+            return state == null ? 1 : 0;
+        }
 
         DateTime date;
         if (options.TryGetValue("--date", out var dateInput))
@@ -390,9 +401,148 @@ internal static class Program
         }
     }
 
+    private static UiState? InitializeWorkbookFromScratch(string workbookPath, Dictionary<string, string> options, XLWorkbook? existingWorkbook)
+    {
+        var shouldExpand = AnsiConsole.Profile.Capabilities.Interactive;
+        if (shouldExpand)
+        {
+            AnsiConsole.Clear();
+        }
+
+        AnsiConsole.MarkupLine("[yellow]No portfolio data found. Let's create your first month.[/]");
+
+        DateTime date;
+        if (options.TryGetValue("--date", out var dateInput))
+        {
+            if (!TryParseDate(dateInput, out date))
+            {
+                AnsiConsole.MarkupLine("[red]Invalid date. Use yyyy-MM-dd.[/]");
+                return null;
+            }
+        }
+        else
+        {
+            date = PromptForDate();
+        }
+
+        var accounts = PromptForAccounts(date);
+        if (accounts.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[red]At least one account is required.[/]");
+            return null;
+        }
+
+        var workbook = existingWorkbook ?? new XLWorkbook();
+        var sheetName = MonthSheetName(date);
+        var sheet = workbook.Worksheets.FirstOrDefault(ws => ws.Name.Equals(sheetName, StringComparison.OrdinalIgnoreCase))
+            ?? workbook.AddWorksheet(sheetName);
+
+        BuildSheetFromScratch(sheet, date, accounts);
+        workbook.SaveAs(workbookPath);
+
+        if (existingWorkbook == null)
+        {
+            workbook.Dispose();
+        }
+
+        return new UiState(date)
+        {
+            StatusMessage = $"Created {sheetName} with {accounts.Count} accounts.",
+            IsMonthMatched = true
+        };
+    }
+
+    private static List<AccountSeed> PromptForAccounts(DateTime date)
+    {
+        var accounts = new List<AccountSeed>();
+        while (true)
+        {
+            var name = AnsiConsole.Prompt(
+                new TextPrompt<string>("Account name (blank to finish)")
+                    .AllowEmpty());
+
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                if (accounts.Count == 0)
+                {
+                    AnsiConsole.MarkupLine("[red]Please add at least one account.[/]");
+                    continue;
+                }
+
+                break;
+            }
+
+            var value = AnsiConsole.Prompt(
+                new TextPrompt<decimal>($"{name} value ({date:yyyy-MM-dd})")
+                    .Validate(v => v >= 0m));
+
+            accounts.Add(new AccountSeed(name.Trim(), value));
+        }
+
+        return accounts;
+    }
+
+    private static void BuildSheetFromScratch(IXLWorksheet sheet, DateTime date, IReadOnlyList<AccountSeed> accounts)
+    {
+        var firstDay = new DateTime(date.Year, date.Month, 1);
+        var lastDay = firstDay.AddMonths(1).AddDays(-1);
+        var prevDay = firstDay.AddDays(-1);
+
+        sheet.Clear();
+        sheet.Cell(1, 2).Value = prevDay;
+        var col = 3;
+        var current = firstDay;
+        while (current <= lastDay)
+        {
+            sheet.Cell(1, col).Value = current;
+            col++;
+            current = current.AddDays(1);
+        }
+
+        var startRow = 4;
+        var totalRow = startRow + accounts.Count;
+        var changeRow = totalRow + 1;
+        var targetCol = 2 + date.Day;
+
+        for (var i = 0; i < accounts.Count; i++)
+        {
+            var row = startRow + i;
+            var account = accounts[i];
+            sheet.Cell(row, 1).Value = account.Name;
+            sheet.Cell(row, 2).Value = account.Value;
+            sheet.Cell(row, targetCol).Value = account.Value;
+        }
+
+        sheet.Cell(totalRow, 1).Value = "Total";
+        for (var c = 2; c < col; c++)
+        {
+            var columnLetter = XLHelper.GetColumnLetterFromNumber(c);
+            sheet.Cell(totalRow, c).FormulaA1 = $"SUM({columnLetter}{startRow}:{columnLetter}{totalRow - 1})";
+        }
+
+        for (var c = 3; c < col; c++)
+        {
+            var columnLetter = XLHelper.GetColumnLetterFromNumber(c);
+            var prevLetter = XLHelper.GetColumnLetterFromNumber(c - 1);
+            sheet.Cell(changeRow, c).FormulaA1 = $"IF({columnLetter}{totalRow}=0,0,{columnLetter}{totalRow}-{prevLetter}{totalRow})";
+        }
+    }
+
+    private static bool HasPortfolioSheets(XLWorkbook workbook)
+        => workbook.Worksheets.Any(ws => TryGetMonthFromSheetName(ws.Name).HasValue);
+
     private static UiState? InitializeInteractiveState(string workbookPath, Dictionary<string, string> options)
     {
+        if (!File.Exists(workbookPath))
+        {
+            return InitializeWorkbookFromScratch(workbookPath, options, null);
+        }
+
         using var workbook = new XLWorkbook(workbookPath);
+        if (!HasPortfolioSheets(workbook))
+        {
+            return InitializeWorkbookFromScratch(workbookPath, options, workbook);
+        }
         DateTime requestedDate;
         string? statusMessage = null;
 
@@ -1144,8 +1294,8 @@ internal static class Program
         }
 
         var slice = months.Take(endIndex + 1).ToList();
-        var cashStart = slice.FirstOrDefault()?.Cash;
-        var cashLatest = slice.LastOrDefault()?.Cash;
+        var cashStart = slice.FirstOrDefault(m => m.Cash.HasValue)?.Cash;
+        var cashLatest = slice.LastOrDefault(m => m.Cash.HasValue)?.Cash;
         var pnlYtd = SumNullable(slice.Select(m => m.PnL));
         if (!pnlYtd.HasValue && cashStart.HasValue && cashLatest.HasValue)
         {
@@ -1162,7 +1312,34 @@ internal static class Program
             returnYtd = SumNullable(slice.Select(m => m.Return));
         }
 
-        return new FyTotals(returnYtd, cashLatest, pnlYtd, summary.TotalReturn, summary.TotalCash, summary.TotalPnL);
+        var totalReturn = ComputeTotalReturn(summary);
+        var totalCash = ComputeTotalCash(summary);
+        var totalPnL = ComputeTotalPnL(summary);
+
+        return new FyTotals(returnYtd, cashLatest, pnlYtd, totalReturn, totalCash, totalPnL);
+    }
+
+    private static decimal? ComputeTotalPnL(FySummary summary)
+        => summary.TotalPnL ?? SumNullable(summary.Months.Select(m => m.PnL));
+
+    private static decimal? ComputeTotalCash(FySummary summary)
+        => summary.TotalCash ?? summary.Months.LastOrDefault(m => m.Cash.HasValue)?.Cash;
+
+    private static decimal? ComputeTotalReturn(FySummary summary)
+    {
+        if (summary.TotalReturn.HasValue)
+        {
+            return summary.TotalReturn;
+        }
+
+        var firstCash = summary.Months.FirstOrDefault(m => m.Cash.HasValue)?.Cash;
+        var lastCash = summary.Months.LastOrDefault(m => m.Cash.HasValue)?.Cash;
+        if (firstCash.HasValue && lastCash.HasValue && firstCash.Value != 0m)
+        {
+            return (lastCash.Value - firstCash.Value) / firstCash.Value;
+        }
+
+        return SumNullable(summary.Months.Select(m => m.Return));
     }
 
     private static decimal? SumNullable(IEnumerable<decimal?> values)
@@ -1224,13 +1401,17 @@ internal static class Program
                 ColorizeChangeOrDash(month.PnL));
         }
 
-        if (summary.TotalPnL.HasValue || summary.TotalReturn.HasValue || summary.TotalCash.HasValue)
+        var totalPnL = ComputeTotalPnL(summary);
+        var totalReturn = ComputeTotalReturn(summary);
+        var totalCash = ComputeTotalCash(summary);
+
+        if (totalPnL.HasValue || totalReturn.HasValue || totalCash.HasValue)
         {
             table.AddRow(
                 "[bold]Total[/]",
-                ColorizePercentOrDash(summary.TotalReturn),
-                FormatMoneyOrDash(summary.TotalCash),
-                ColorizeChangeOrDash(summary.TotalPnL));
+                ColorizePercentOrDash(totalReturn),
+                FormatMoneyOrDash(totalCash),
+                ColorizeChangeOrDash(totalPnL));
         }
 
         return new Panel(table)
@@ -1242,7 +1423,7 @@ internal static class Program
         };
     }
 
-    private static Panel BuildFyChartPanel(FySummary? summary)
+    private static Panel BuildFyChartPanel(FySummary? summary, DateTime selectedDate, Snapshot snapshot)
     {
         var shouldExpand = AnsiConsole.Profile.Capabilities.Interactive;
 
@@ -1258,10 +1439,19 @@ internal static class Program
         }
 
         var months = summary.Months
-            .Where(m => m.PnL.HasValue)
+            .Select(m => new ChartMonth(m.Label, m.MonthNumber, m.PnL))
             .ToList();
 
-        if (months.Count == 0)
+        var currentIndex = months.FindIndex(m => m.MonthNumber == selectedDate.Month);
+        if (currentIndex >= 0)
+        {
+            var current = months[currentIndex];
+            months[currentIndex] = current with { PnL = snapshot.MonthToDate };
+        }
+
+        var chartMonths = months.Where(m => m.PnL.HasValue).ToList();
+
+        if (chartMonths.Count == 0)
         {
             return new Panel(new Markup("[grey]No PnL data.[/]"))
             {
@@ -1272,7 +1462,7 @@ internal static class Program
             };
         }
 
-        var max = months.Max(m => Math.Abs(m.PnL ?? 0m));
+        var max = chartMonths.Max(m => Math.Abs(m.PnL ?? 0m));
         if (max == 0m)
         {
             max = 1m;
@@ -1287,7 +1477,7 @@ internal static class Program
             .AddColumn(new TableColumn("Month"))
             .AddColumn(new TableColumn("PnL").NoWrap());
 
-        foreach (var month in months)
+        foreach (var month in chartMonths)
         {
             var bar = BuildBar(month.PnL ?? 0m, max, 18);
             table.AddRow(month.Label, bar);
@@ -1495,7 +1685,7 @@ internal static class Program
         };
 
         var fyPanel = BuildFyPanel(fySummary, selectedDate);
-        var chartPanel = BuildFyChartPanel(fySummary);
+        var chartPanel = BuildFyChartPanel(fySummary, selectedDate, snapshot);
 
         var hintsText = interactiveMode
             ? "[grey]Controls:[/]\n[silver]←/→[/] Change month  [silver]↑/↓[/] Change day\n[silver]A[/] Add entry (creates month if missing)  [silver]Q[/] Quit"
@@ -1516,7 +1706,7 @@ internal static class Program
 
         var columnWidth = Math.Clamp(totalWidth / 3, 38, 60);
         var accountsHeight = Math.Max(8, snapshot.Accounts.Count + 5);
-        var chartRows = fySummary?.Months.Count(m => m.PnL.HasValue) ?? 0;
+        var chartRows = fySummary?.Months.Count(m => m.PnL.HasValue || m.MonthNumber == selectedDate.Month) ?? 0;
         var chartHeight = Math.Max(10, chartRows + 4);
         var summaryHeight = Math.Max(8, summaryRowCount + 4);
         layout["body"].SplitColumns(
