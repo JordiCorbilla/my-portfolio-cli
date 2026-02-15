@@ -1481,7 +1481,7 @@ internal static class Program
         foreach (var day in snapshot.RecentChanges)
         {
             recentTable.AddRow(
-                day.Date.ToString("MM-dd"),
+                day.Date.ToString("dd-MM-yyyy"),
                 ColorizeChange(day.Change),
                 ColorizePercent(day.ChangePct));
         }
