@@ -1342,6 +1342,37 @@ internal static class Program
         return SumNullable(summary.Months.Select(m => m.Return));
     }
 
+    private static string FormatFyMonthLabel(FySummary summary, FyMonth month)
+    {
+        var year = TryGetFyYear(summary);
+        if (!year.HasValue)
+        {
+            return month.Label;
+        }
+
+        var startMonth = summary.Months.Count > 0 ? summary.Months[0].MonthNumber : 1;
+        var monthYear = month.MonthNumber >= startMonth ? year.Value : year.Value + 1;
+        return $"{month.Label}-{monthYear % 100:00}";
+    }
+
+    private static int? TryGetFyYear(FySummary summary)
+    {
+        if (string.IsNullOrWhiteSpace(summary.Title))
+        {
+            return null;
+        }
+
+        foreach (var token in summary.Title.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (int.TryParse(token, out var year) && year >= 2000 && year <= 2100)
+            {
+                return year;
+            }
+        }
+
+        return null;
+    }
+
     private static decimal? SumNullable(IEnumerable<decimal?> values)
     {
         decimal sum = 0m;
@@ -1393,7 +1424,8 @@ internal static class Program
                 continue;
             }
 
-            var label = month.MonthNumber == selectedDate.Month ? $"[bold]{month.Label}[/]" : month.Label;
+            var displayLabel = FormatFyMonthLabel(summary, month);
+            var label = month.MonthNumber == selectedDate.Month ? $"[bold]{displayLabel}[/]" : displayLabel;
             table.AddRow(
                 label,
                 ColorizePercentOrDash(month.Return),
@@ -1439,7 +1471,7 @@ internal static class Program
         }
 
         var months = summary.Months
-            .Select(m => new ChartMonth(m.Label, m.MonthNumber, m.PnL))
+            .Select(m => new ChartMonth(FormatFyMonthLabel(summary, m), m.MonthNumber, m.PnL))
             .ToList();
 
         var currentIndex = months.FindIndex(m => m.MonthNumber == selectedDate.Month);
