@@ -1853,6 +1853,7 @@ internal sealed record AccountRow(string Name, int Row);
 internal sealed record SheetInfo(string Name, IReadOnlyList<DateColumn> DateColumns, IReadOnlyList<AccountRow> AccountRows, int TotalRow, IXLWorksheet Worksheet);
 internal sealed record AccountSnapshot(string Name, decimal Current, decimal Previous, decimal Change, decimal ChangePct);
 internal sealed record DailyChange(DateTime Date, decimal Change, decimal ChangePct);
+internal sealed record AccountSeed(string Name, decimal Value);
 internal sealed record Snapshot(
     DateTime Date,
     IReadOnlyList<AccountSnapshot> Accounts,
@@ -1873,6 +1874,8 @@ internal sealed record FyMonth(string Label, int MonthNumber, decimal? Return, d
 internal sealed record FySummary(string Title, IReadOnlyList<FyMonth> Months, decimal? TotalReturn, decimal? TotalCash, decimal? TotalPnL);
 
 internal sealed record FyTotals(decimal? ReturnYtd, decimal? CashLatest, decimal? PnLYtd, decimal? ReturnTotal, decimal? CashTotal, decimal? PnLTotal);
+
+internal sealed record ChartMonth(string Label, int MonthNumber, decimal? PnL);
 
 internal sealed class UiState
 {
