@@ -17,12 +17,12 @@ This project was vibe-coded with Chat GPT-5-2-Codex over a weekend.
 
 ## Quick Start
 ```powershell
-dotnet run --project .\PortfolioCli
+dotnet run --project .\
 ```
 
 By default it loads `my_portfolio.xlsx` from the repo root. Use a different file with:
 ```powershell
-dotnet run --project .\PortfolioCli -- --file .\demo_portfolio.xlsx
+dotnet run --project .\ -- --file .\demo_portfolio.xlsx
 ```
 
 ## Controls (Interactive Mode)
@@ -33,13 +33,13 @@ dotnet run --project .\PortfolioCli -- --file .\demo_portfolio.xlsx
 
 ## Commands (Optional)
 ```powershell
-dotnet run --project .\PortfolioCli -- view --file .\my_portfolio.xlsx
-dotnet run --project .\PortfolioCli -- add --date 2026-03-01 --file .\my_portfolio.xlsx
-dotnet run --project .\PortfolioCli -- interactive --file .\my_portfolio.xlsx
+dotnet run --project .\ -- view --file .\my_portfolio.xlsx
+dotnet run --project .\ -- add --date 2026-03-01 --file .\my_portfolio.xlsx
+dotnet run --project .\ -- interactive --file .\my_portfolio.xlsx
 ```
 
 ## Demo Workbook
-Use the included `demo_portfolio.xlsx` for screenshots, demos, and sharing.
+Use the included `my_portfolio.xlsx` for screenshots, demos, and sharing.
 
 ## Month Creation
 If you navigate to a month that doesn’t exist (e.g., March) and press `A`, the CLI will:
