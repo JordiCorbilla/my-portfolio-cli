@@ -42,15 +42,15 @@ dotnet run --project .\PortfolioCli -- interactive --file .\my_portfolio.xlsx
 Use the included `demo_portfolio.xlsx` for screenshots, demos, and sharing.
 
 ## Month Creation
-If you navigate to a month that doesn’t exist (e.g., March) and press `A`, the CLI will:
+If you navigate to a month that doesnâ€™t exist (e.g., March) and press `A`, the CLI will:
 1. Create a new sheet by copying the previous month.
 2. Carry forward the latest filled day as the new baseline.
-3. Prompt you for the selected day’s values.
+3. Prompt you for the selected dayâ€™s values.
 
 ## Unicode vs ASCII
-Some Windows terminals don’t render Unicode bars or the £ symbol. The app auto-falls back, but you can force behavior:
+Some Windows terminals donâ€™t render Unicode bars or the Â£ symbol. The app auto-falls back, but you can force behavior:
 ```powershell
-$env:PORTFOLIO_UNICODE = "1"  # force £ and ¦
+$env:PORTFOLIO_UNICODE = "1"  # force Â£ and Â¦
 $env:PORTFOLIO_ASCII = "1"    # force GBP and #
 ```
 
@@ -60,5 +60,6 @@ $env:PORTFOLIO_ASCII = "1"    # force GBP and #
 - ClosedXML
 
 ## Screenshots
-Add screenshots here when publishing.
+<img width="1913" height="1015" alt="image" src="https://github.com/user-attachments/assets/6eaf0e04-a008-48ca-bf57-9d8a38eb509f" />
+
 
