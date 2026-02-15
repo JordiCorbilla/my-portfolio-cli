@@ -1373,6 +1373,18 @@ internal static class Program
         return null;
     }
 
+    private static List<ChartMonth> OrderFyMonths(FySummary summary, List<ChartMonth> months)
+    {
+        var order = summary.Months
+            .Select((m, idx) => new { m.MonthNumber, idx })
+            .GroupBy(x => x.MonthNumber)
+            .ToDictionary(g => g.Key, g => g.First().idx);
+
+        return months
+            .OrderBy(m => order.TryGetValue(m.MonthNumber, out var idx) ? idx : int.MaxValue)
+            .ToList();
+    }
+
     private static decimal? SumNullable(IEnumerable<decimal?> values)
     {
         decimal sum = 0m;
@@ -1480,8 +1492,16 @@ internal static class Program
             var current = months[currentIndex];
             months[currentIndex] = current with { PnL = snapshot.MonthToDate };
         }
+        else
+        {
+            var label = FormatFyMonthLabel(summary, new FyMonth(selectedDate.ToString("MMM", CultureInfo.InvariantCulture), selectedDate.Month, null, null, null));
+            months.Add(new ChartMonth(label, selectedDate.Month, snapshot.MonthToDate));
+            months = OrderFyMonths(summary, months);
+        }
 
-        var chartMonths = months.Where(m => m.PnL.HasValue).ToList();
+        var chartMonths = months
+            .Where(m => m.PnL.HasValue || m.MonthNumber == selectedDate.Month)
+            .ToList();
 
         if (chartMonths.Count == 0)
         {
